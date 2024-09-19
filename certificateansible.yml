@@ -1,0 +1,77 @@
+---
+- name: Code for generating the self signed certificate.
+  hosts: localhost
+  become: true
+  vars:
+    ansible_python_interpreter: /home/amit/myenv/bin/python #this will be changing based on your environment, please change accordingly.
+    cert_common_name: "amitskexample.com"  
+    tls_secret_name: "nginx-secret"         # please give any name for secret
+    ingress_name: "example-ingress"       
+    tls_cert_path: "tls.crt"                 # Path to the TLS certificate file
+    tls_key_path: "tls.key"                   # Path to the TLS key file
+    nginx_service_name: "nginx-service"      # Name of the NGINX service
+
+  tasks:
+    - name: Generating the self signed tls certificate
+      shell: >
+        openssl req -x509 -newkey rsa:4096 -sha256 -nodes -keyout {{ tls_key_path }} -out {{ tls_cert_path }} -subj "/CN={{ cert_common_name }}" -days 365
+      register: cert_generation
+
+    - name: Checking the generation result
+      debug:
+        msg: "Certificate and key generated successfully."
+      failed_when: cert_generation.rc != 0
+
+    - name: Change the permission of the tls certificate which have been created.
+      file:
+        path: "{{ item }}"
+        mode: '0644'
+      loop:
+        - "{{ tls_cert_path }}"
+        - "{{ tls_key_path }}"
+
+    - name: Creating the k8s secret for TLS.
+      community.kubernetes.k8s:
+        kubeconfig: "~/.kube/config"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ tls_secret_name }}"
+            namespace: default
+          type: kubernetes.io/tls
+          data:
+            tls.crt: "{{ lookup('file', tls_cert_path) | b64encode }}"
+            tls.key: "{{ lookup('file', tls_key_path) | b64encode }}"
+
+    - name: Show Success Message for Secret Creation
+      debug:
+        msg: "Kubernetes secret '{{ tls_secret_name }}' created successfully."
+
+    - name: Apply the ingress route configuration.
+      community.kubernetes.k8s:
+        kubeconfig: "~/.kube/config"
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: "{{ ingress_name }}"
+            namespace: default
+          spec:
+            tls:
+              - hosts:
+                  - "{{ cert_common_name }}"
+                secretName: "{{ tls_secret_name }}"
+            rules:
+              - host: "{{ cert_common_name }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: "{{ nginx_service_name }}"
+                          port:
+                            number: 80

@@ -1,0 +1,13 @@
+---
+- name: Deploy IngressRoute
+  hosts: localhost
+  vars:
+    ansible_python_interpreter: /home/amit/myenv/bin/python
+
+  tasks:
+    - name: Apply Kubernetes manifests for Nginx Application
+      community.kubernetes.k8s:
+        kubeconfig: "~/.kube/config"
+        state: present
+        definition: "{{ lookup('file', 'ingressroute.yml') }}"
+

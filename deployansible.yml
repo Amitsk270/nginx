@@ -1,0 +1,23 @@
+---
+- name: Install Helm, Enable Minikube Ingress Addon and deploy some deployments.
+  hosts: localhost
+  vars:
+    ansible_python_interpreter: /home/amit/myenv/bin/python  #change this to according to your environment.
+
+  tasks:
+    - name: install the helm
+      become: yes
+      shell: |
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        chmod 700 get_helm.sh
+        ./get_helm.sh
+
+    - name: enable the ingress in the minikube.
+      command: minikube addons enable ingress
+
+    - name: apply the k8s minifest for the deployment.
+      community.kubernetes.k8s:
+        kubeconfig: "~/.kube/config"
+        state: present
+        definition: "{{ lookup('file', 'deployment.yml') }}"
+
